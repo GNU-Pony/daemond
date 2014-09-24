@@ -1,0 +1,30 @@
+`daemond` aim to never die, and as long as your
+system is working properily with another memory
+on it, it should never die.
+
+`daemond` achieves this by having two programs
+that monitor each other.
+
+The user types `start-daemond` to start `daemond`.
+`start-daemond` will spawn `daemond-resurrectd` and
+wait for it to send SIGCHLD. When this happens,
+`start-daemond` will exit with the value zero if
+`daemond-resurrectd` is still alive, but otherwise
+exit with the same value as `daemond-resurrectd`,
+it will however not try to emulate death by signal.
+`daemond-resurrectd` will act similar to
+`start-daemond` to start `daemond'. However, if
+`daemond` was successfully initialised,
+`daemond-resurrectd` will not exit but will
+wait for `daemond` to die. If `daemond` dies
+with the zero exit value `daemond-resurrectd` will
+do likewise, otherwise it will respawn `daemond`
+and restart this respawning pattern.
+
+`daemond` is able to detect if `daemond-resurrectd`
+dies. If this happens, `daemond` will respawn
+`daemond-resurrectd` and exit so that
+`daemond-resurrectd` can respawn `daemond` so that
+`daemond` has a `daemond-resurrectd` parent again.
+(I wish their was a way to reparent oneself.)
+
