@@ -96,7 +96,8 @@ int main(int argc, char* argv[])
 {
   (void) argc;
   
-  signal(SIGRTMIN, noop_sig_handler);
+  if (signal(SIGRTMIN, noop_sig_handler) == SIG_ERR)
+    return perror(*argv), 1;
   
   if (prctl(PR_SET_PDEATHSIG, SIGRTMIN) < 0)
     return perror(*argv), 1;
@@ -110,9 +111,8 @@ int main(int argc, char* argv[])
       pid_t pid;
       pause();
       fprintf(stderr, "%s: daemond-resurrectd died, respawning\n", *argv);
-      signal(SIGCHLD, noop_sig_handler);
-      pid = fork();
-      if (pid == -1)
+      if ((signal(SIGCHLD, noop_sig_handler) == SIG_ERR) ||
+	  (pid = fork(), pid == -1))
 	{
 	  perror(*argv);
 	  continue;
