@@ -113,7 +113,7 @@ static int parent_procedure(void)
  * @param   argv  Command line arguments
  * @return        Zero on success, between 1 and 255 on error
  */
-int main(int argc, char* argv[])
+int main(int argc, char** argv)
 {
   int r;
   

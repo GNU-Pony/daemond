@@ -1,5 +1,4 @@
 Unprivileged users should be able to manage their own daemons.
 SIGUSR1 should reexec daemond and daemond-resurrectd.
-SIGUSR2 should disable the immortality protocol. (currently you can stop and kill)
 Wait with respawn if dying too fast
 
