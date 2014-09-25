@@ -78,6 +78,25 @@ static void sig_handler(int signo)
 
 
 /**
+ * Initialise the daemon
+ * 
+ * @return  The value with which `main` should return
+ */
+static int initialise_daemon(void)
+{
+  if ((signal(SIGRTMIN, sig_handler) == SIG_ERR) ||
+      (signal(SIGUSR1,  sig_handler) == SIG_ERR) ||
+      (signal(SIGUSR2,  sig_handler) == SIG_ERR))
+    return 1;
+  
+  if (prctl(PR_SET_PDEATHSIG, SIGRTMIN) < 0)
+    return 1;
+  
+  return 0;
+}
+
+
+/**
  * Mane procedure for the child process after the fork
  * to resurrect `daemond-resurrectd`
  * 
@@ -198,13 +217,8 @@ int main(int argc, char** argv_)
   if ((argc == 2) && !strcmp(argv[1], "--reexecing"))
     reexeced = 1;
   
-  if ((signal(SIGRTMIN, sig_handler) == SIG_ERR) ||
-      (signal(SIGUSR1,  sig_handler) == SIG_ERR) ||
-      (signal(SIGUSR2,  sig_handler) == SIG_ERR))
-    return perror(*argv), 1;
-  
-  if (prctl(PR_SET_PDEATHSIG, SIGRTMIN) < 0)
-    return perror(*argv), 1;
+  if ((r = initialise_daemon()))
+    return perror(*argv), r;
   
   /* Signal `daemond-resurrectd` that we are running. */
   if (!reexeced)
