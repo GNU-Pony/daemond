@@ -188,8 +188,14 @@ static int initialise_daemon(void)
     if (errno != EEXIST)
       return 1;
   
-  if ((r = create_mqueue()))
-    return r;
+  if (access(RUNDIR "/" PKGNAME "/mqueue.key", F_OK) < 0)
+    {
+      if (errno == ENOENT)
+	if ((r = create_mqueue()))
+	  return r;
+      if (errno != ENOENT)
+	return 1;
+    }
   
   return 0;
 }
