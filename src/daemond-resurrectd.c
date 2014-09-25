@@ -21,6 +21,8 @@
 #include <errno.h>
 #include <signal.h>
 #include <stdio.h>
+#include <stdint.h>
+#include <stdlib.h>
 
 
 /**
@@ -41,6 +43,11 @@ static char** argv;
  * Whether the immortality protocol is enabled
  */
 static volatile sig_atomic_t immortality = 1;
+
+/**
+ * Whether we should re-exec.
+ */
+static volatile sig_atomic_t reexec = 0;
 
 
 
@@ -65,7 +72,9 @@ static void parent_handle_signal(int signo)
  */
 static void anastatis_handle_signal(int signo)
 {
-  if (signo == SIGUSR2)
+  if (signo == SIGUSR1)
+    reexec = 1;
+  else if (signo == SIGUSR2)
     immortality = 0;
 }
 
@@ -141,7 +150,17 @@ static int respawn(pid_t child)
       pid = waitpid(-1, &r, WNOHANG);
       if ((pid == 0) || ((pid == -1) && (errno == EINTR)))
 	{
-	  if (immortality_ && !immortality)
+	  if (reexec)
+	    {
+	      char pid_str[3 * sizeof(pid_t) + 1];
+	      fprintf(stderr, "%s: reexecuting\n", *argv);
+	      if (!immortality)
+		fprintf(stderr, "%s: immortality protocol will be reenabled\n", *argv);
+	      sprintf(pid_str, "%ji", (intmax_t)pid);
+	      execlp(LIBEXECDIR "/daemond-resurrectd", "daemond-resurrectd", pid_str, NULL);
+	      perror(*argv);
+	    }
+	  else if (immortality_ && !immortality)
 	    {
 	      fprintf(stderr, "%s: disabling immortality protocol\n", *argv);
 	      immortality_ = 0;
@@ -179,20 +198,25 @@ static int respawn(pid_t child)
 /**
  * Starts the daemon (managing) daemon
  * 
- * @param   argc_  The number of elements in `argv_`
+ * @param   argc   The number of elements in `argv_`
  * @param   argv_  Command line arguments
  * @return         Zero on success, between 1 and 255 on error
  */
-int main(int argc_, char** argv_)
+int main(int argc, char** argv_)
 {
   int r;
-  pid_t pid;
+  pid_t pid = -1;
   
-  (void) argc_;
   argv = argv_;
   
   if (initialise_daemon() < 0)
     return perror(*argv), 1;
+  
+  if (argc == 2)
+    {
+      pid = (pid_t)atoll(argv[1]);
+      goto have_child;
+    }
   
   pid = fork();
   if (pid == -1)
@@ -210,6 +234,7 @@ int main(int argc_, char** argv_)
   if (kill(getppid(), SIGCHLD) < 0)
     return perror(*argv), 1;
   
+have_child:
   if (signal(SIGCHLD, SIG_DFL) == SIG_ERR)
     perror(*argv);
   

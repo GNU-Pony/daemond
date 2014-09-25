@@ -19,6 +19,7 @@
 #include <signal.h>
 #include <stdio.h>
 #include <errno.h>
+#include <string.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/prctl.h>
@@ -48,6 +49,11 @@ static volatile sig_atomic_t pdeath = 0;
  */
 static volatile sig_atomic_t immortality = 1;
 
+/**
+ * Whether we should re-exec.
+ */
+static volatile sig_atomic_t reexec = 0;
+
 
 
 /**
@@ -70,6 +76,8 @@ static void sig_handler(int signo)
 {
   if (signo == SIGRTMIN)
     pdeath = 1;
+  else if (signo == SIGUSR1)
+    reexec = 1;
   else if (signo == SIGUSR2)
     immortality = 0;
 }
@@ -147,20 +155,21 @@ static int resurrect_parent(void)
 /**
  * Starts the daemon (managing) daemon
  * 
- * @param   argc_  The number of elements in `argv_`
+ * @param   argc   The number of elements in `argv_`
  * @param   argv_  Command line arguments
  * @return         Zero on success, between 1 and 255 on error
  */
-int main(int argc_, char** argv_)
+int main(int argc, char** argv_)
 {
-  int r, immortality_ = 1;
+  int r, immortality_ = 1, reexeced = 0;
   pid_t pid;
   
-  (void) argc_;
-  
   argv = argv_;
+  if ((argc == 2) && !strcmp(argv[1], "--reexecing"))
+    reexeced = 1;
   
   if ((signal(SIGRTMIN, sig_handler) == SIG_ERR) ||
+      (signal(SIGUSR1,  sig_handler) == SIG_ERR) ||
       (signal(SIGUSR2,  sig_handler) == SIG_ERR))
     return perror(*argv), 1;
   
@@ -168,14 +177,23 @@ int main(int argc_, char** argv_)
     return perror(*argv), 1;
   
   /* Signal `daemond-resurrectd` that we are running. */
-  if (kill(getppid(), SIGCHLD) < 0)
-    return perror(*argv), 1;
+  if (!reexeced)
+    if (kill(getppid(), SIGCHLD) < 0)
+      return perror(*argv), 1;
   
   for (;;)
     if ((pid = wait(NULL), pid == -1) && ((errno == ECHILD) && pause()))
       {
 	if (errno != EINTR)
 	  return perror(*argv), 1;
+	else if (reexec)
+	  {
+	    fprintf(stderr, "%s: reexecuting\n", *argv);
+	    if (!immortality)
+	      fprintf(stderr, "%s: immortality protocol will be reenabled\n", *argv);
+	    execlp(LIBEXECDIR "/daemond", "daemond", "--reexecing", NULL);
+	    perror(*argv);
+	  }
 	else if (pdeath && immortality)
 	  {
 	    pdeath = 0;

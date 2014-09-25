@@ -1,4 +1,3 @@
 Unprivileged users should be able to manage their own daemons.
-SIGUSR1 should reexec daemond and daemond-resurrectd.
 Wait with respawn if dying too fast
 
