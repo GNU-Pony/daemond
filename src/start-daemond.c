@@ -87,7 +87,10 @@ static key_t generate_key(void)
   long long max = 1LL << (8 * sizeof(key_t) - 2);
   max |= max - 1;
   while (key == IPC_PRIVATE)
-    key = (key_t)((double)rand() / ((double)RAND_MAX + 1) * (max - 1)) + 1;
+    {
+      int rnd = rand();
+      key = (key_t)((double)rnd / ((double)RAND_MAX + 1) * (double)(max - 1)) + 1;
+    }
   return key;
 }
 
