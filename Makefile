@@ -58,5 +58,5 @@ bin/%: src/%.c src/*.h
 
 .PHONY: clean
 clean:
-	-rm -rf obj bin
+	-rm -rf obj bin *.su
 
