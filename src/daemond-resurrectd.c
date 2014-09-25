@@ -137,7 +137,7 @@ static int respawn(pid_t child)
   
   for (;;)
     {
-      pause(); /* We are having problems with getting signals to interrupt wait. */
+      pause(); /* We are having problems with getting signals to interrupt `wait`. */
       pid = waitpid(-1, &r, WNOHANG);
       if ((pid == 0) || ((pid == -1) && (errno == EINTR)))
 	{
