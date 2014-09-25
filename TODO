@@ -1,3 +1,1 @@
 Unprivileged users should be able to manage their own daemons.
-Wait with respawn if dying too fast
-

@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <time.h>
 
 
 /**
@@ -141,8 +142,14 @@ static int parent_procedure(pid_t child)
  */
 static int respawn(pid_t child)
 {
+  int r, immortality_ = 1, respawn_ok, have_time;
+  struct timespec birth;
+  struct timespec death;
   pid_t pid;
-  int r, immortality_ = 1;
+  
+  have_time = clock_gettime(CLOCK_MONOTONIC, &birth) == 0;
+  if (!have_time)
+    perror(*argv);
   
   for (;;)
     {
@@ -177,14 +184,47 @@ static int respawn(pid_t child)
       if (immortality == 0)
 	return 0;
       
+      if (have_time)
+	{
+	  have_time = clock_gettime(CLOCK_MONOTONIC, &death) == 0;
+	  if (!have_time)
+	    perror(*argv);
+	}
+      if (have_time)
+	{
+	  respawn_ok = death.tv_sec - birth.tv_sec > 1;
+	  if (!respawn_ok)
+	    {
+	      long diff = death.tv_sec - birth.tv_sec;
+	      diff *= 1000000000L;
+	      diff += death.tv_nsec - birth.tv_nsec;
+	      respawn_ok = diff >= 1000000000L;
+	    }
+	  birth = death;
+	}
+      else
+	respawn_ok = 1;
+      
       if (WIFEXITED(r))
 	fprintf(stderr, "%s: daemond exited with value %i", *argv, WEXITSTATUS(r));
       else
 	fprintf(stderr, "%s: daemond died by signal %i", *argv, WTERMSIG(r));
       if (WIFEXITED(r) && (WEXITSTATUS(r) == 0))
 	return fprintf(stderr, "\n"), 0;
-      else
+      else if (respawn_ok)
 	fprintf(stderr, ", respawning\n");
+      else
+	{
+	  fprintf(stderr, ", dying too fast, respawning in 5 minutes\n");
+	  death.tv_sec += 5 * 60;
+	resleep:
+	  errno = clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &death, NULL);
+	  if (errno == EINTR)
+	    goto resleep;
+	  else if (errno)
+	    perror(*argv);
+	  fprintf(stderr, "%s: respawning now\n", *argv);
+	}
       
       child = fork();
       if (child == -1)
@@ -235,9 +275,6 @@ int main(int argc, char** argv_)
     return perror(*argv), 1;
   
 have_child:
-  if (signal(SIGCHLD, SIG_DFL) == SIG_ERR)
-    perror(*argv);
-  
   r = respawn(pid);
   return r ? (perror(*argv), r) : r;
 }
