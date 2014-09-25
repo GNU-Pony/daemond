@@ -147,6 +147,42 @@ static int resurrect_parent(void)
 
 
 /**
+ * Perform appropriate actions when an interruption has occurred
+ * 
+ * @return  The value `main` should return, -1 of `main` should not return
+ */
+static int handle_interruption(void)
+{
+  static int immortality_ = 1;
+  int r;
+  
+  if (reexec)
+    {
+      fprintf(stderr, "%s: reexecuting\n", *argv);
+      if (!immortality)
+	fprintf(stderr, "%s: immortality protocol will be reenabled\n", *argv);
+      execlp(LIBEXECDIR "/daemond", "daemond", "--reexecing", NULL);
+      perror(*argv);
+    }
+  else if (pdeath && immortality)
+    {
+      pdeath = 0;
+      if (r = resurrect_parent(), r >= 0)
+	return r;
+    }
+  else if (immortality_ && !immortality)
+    {
+      fprintf(stderr, "%s: disabling immortality protocol\n", *argv);
+      immortality_ = 0;
+      if (kill(getppid(), SIGUSR2) < 0)
+	perror(*argv);
+    }
+  
+  return -1;
+}
+
+
+/**
  * Starts the daemon (managing) daemon
  * 
  * @param   argc   The number of elements in `argv_`
@@ -155,7 +191,7 @@ static int resurrect_parent(void)
  */
 int main(int argc, char** argv_)
 {
-  int r, immortality_ = 1, reexeced = 0;
+  int r, reexeced = 0;
   pid_t pid;
   
   argv = argv_;
@@ -180,27 +216,9 @@ int main(int argc, char** argv_)
       {
 	if (errno != EINTR)
 	  return perror(*argv), 1;
-	else if (reexec)
-	  {
-	    fprintf(stderr, "%s: reexecuting\n", *argv);
-	    if (!immortality)
-	      fprintf(stderr, "%s: immortality protocol will be reenabled\n", *argv);
-	    execlp(LIBEXECDIR "/daemond", "daemond", "--reexecing", NULL);
-	    perror(*argv);
-	  }
-	else if (pdeath && immortality)
-	  {
-	    pdeath = 0;
-	    if (r = resurrect_parent(), r >= 0)
-	      return r;
-	  }
-	else if (immortality_ && !immortality)
-	  {
-	    fprintf(stderr, "%s: disabling immortality protocol\n", *argv);
-	    immortality_ = 0;
-	    if (kill(getppid(), SIGUSR2) < 0)
-	      perror(*argv);
-	  }
+	else
+	  if (r = handle_interruption(), r >= 0)
+	    return r;
       }
 }
 

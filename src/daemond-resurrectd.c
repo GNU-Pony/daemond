@@ -35,6 +35,11 @@
 static char** argv;
 
 /**
+ * The PID of the child process
+ */
+static pid_t child = -1;
+
+/**
  * Whether the immortality protocol is enabled
  */
 static volatile sig_atomic_t immortality = 1;
@@ -105,10 +110,9 @@ static int child_procedure(void)
 /**
  * Mane procedure for the parent process after the fork
  * 
- * @param   child  The PID of the child process
- * @return         The value with which `main` should return
+ * @return  The value with which `main` should return
  */
-static int parent_procedure(pid_t child)
+static int parent_procedure(void)
 {
   int rc = 0;
   pid_t r;
@@ -129,18 +133,112 @@ static int parent_procedure(pid_t child)
 
 
 /**
+ * Perform appropriate actions when an interruption has occurred
+ */
+static void respawn_handle_interruption(void)
+{
+  static int immortality_ = 1;
+  
+  if (reexec)
+    {
+      char pid_str[3 * sizeof(pid_t) + 1];
+      fprintf(stderr, "%s: reexecuting\n", *argv);
+      if (!immortality)
+	fprintf(stderr, "%s: immortality protocol will be reenabled\n", *argv);
+      sprintf(pid_str, "%ji", (intmax_t)child);
+      execlp(LIBEXECDIR "/daemond-resurrectd", "daemond-resurrectd", pid_str, NULL);
+      perror(*argv);
+    }
+  else if (immortality_ && !immortality)
+    {
+      fprintf(stderr, "%s: disabling immortality protocol\n", *argv);
+      immortality_ = 0;
+      if (kill(child, SIGUSR2) < 0)
+	perror(*argv);
+    }
+}
+
+
+/**
+ * Perform a resurrection if appropriate
+ * 
+ * @param   birth      The time when `daemond` was born the last time, will be updated
+ * @param   have_time  Whether we have a value for `birth`, will be updated
+ * @param   status     The exit status for `daemond`
+ * @return             Return value for `respawn`, zero if `respawn` should not return
+ */
+static int respawn_perform_resurrection(struct timespec* restrict birth, int* restrict have_time, int status)
+{
+  int respawn_ok = 1;
+  struct timespec death;
+  
+  /* Get time of death. */
+  if (*have_time)
+    {
+      *have_time = clock_gettime(CLOCK_MONOTONIC, &death) == 0;
+      if (!*have_time)
+	perror(*argv);
+    }
+  
+  /* Was the daemon alive for more than one second? */
+  if (*have_time)
+    {
+      respawn_ok = death.tv_sec - birth->tv_sec > 1;
+      if (!respawn_ok)
+	{
+	  long diff = death.tv_sec - birth->tv_sec;
+	  diff *= 1000000000L;
+	  diff += death.tv_nsec - birth->tv_nsec;
+	  respawn_ok = diff >= 1000000000L;
+	}
+      *birth = death;
+    }
+  
+  /* Print was is going on. */
+  if (WIFEXITED(status))
+    fprintf(stderr, "%s: daemond exited with value %i", *argv, WEXITSTATUS(status));
+  else
+    fprintf(stderr, "%s: daemond died by signal %i", *argv, WTERMSIG(status));
+  if (WIFEXITED(status) && (WEXITSTATUS(status) == 0))
+    return fprintf(stderr, "\n"), 0;
+  else if (respawn_ok)
+    fprintf(stderr, ", respawning\n");
+  else
+    {
+      /* (Try to) sleep for 5 minutes, if the daemon too fast, before resurrecting it. */
+      fprintf(stderr, ", dying too fast, respawning in 5 minutes\n");
+      death.tv_sec += 5 * 60;
+    resleep:
+      errno = clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &death, NULL);
+      if (errno == EINTR)
+	goto resleep;
+      else if (errno)
+	perror(*argv);
+      fprintf(stderr, "%s: respawning now\n", *argv);
+    }
+  
+  /* Anastasis. */
+  child = fork();
+  if (child == -1)
+    return 1;
+  if (child == 0)
+    return child_procedure();
+  return 0;
+}
+
+
+/**
  * Respawn the child everytime it dies
  * 
- * @param   child     The PID of the child process
- * @return            The value with which `main` should return
+ * @return  The value with which `main` should return
  */
-static int respawn(pid_t child)
+static int respawn(void)
 {
-  int r, immortality_ = 1, respawn_ok, have_time;
+  int r, status, have_time;
   struct timespec birth;
-  struct timespec death;
   pid_t pid;
   
+  /* Get time of birth for the daemon. */
   have_time = clock_gettime(CLOCK_MONOTONIC, &birth) == 0;
   if (!have_time)
     perror(*argv);
@@ -148,26 +246,10 @@ static int respawn(pid_t child)
   for (;;)
     {
       pause(); /* We are having problems with getting signals to interrupt `wait`. */
-      pid = waitpid(-1, &r, WNOHANG);
+      pid = waitpid(-1, &status, WNOHANG);
       if ((pid == 0) || ((pid == -1) && (errno == EINTR)))
 	{
-	  if (reexec)
-	    {
-	      char pid_str[3 * sizeof(pid_t) + 1];
-	      fprintf(stderr, "%s: reexecuting\n", *argv);
-	      if (!immortality)
-		fprintf(stderr, "%s: immortality protocol will be reenabled\n", *argv);
-	      sprintf(pid_str, "%ji", (intmax_t)pid);
-	      execlp(LIBEXECDIR "/daemond-resurrectd", "daemond-resurrectd", pid_str, NULL);
-	      perror(*argv);
-	    }
-	  else if (immortality_ && !immortality)
-	    {
-	      fprintf(stderr, "%s: disabling immortality protocol\n", *argv);
-	      immortality_ = 0;
-	      if (kill(child, SIGUSR2) < 0)
-		perror(*argv);
-	    }
+	  respawn_handle_interruption();
 	  continue;
 	}
       else if (pid == -1)
@@ -178,53 +260,9 @@ static int respawn(pid_t child)
       if (immortality == 0)
 	return 0;
       
-      if (have_time)
-	{
-	  have_time = clock_gettime(CLOCK_MONOTONIC, &death) == 0;
-	  if (!have_time)
-	    perror(*argv);
-	}
-      if (have_time)
-	{
-	  respawn_ok = death.tv_sec - birth.tv_sec > 1;
-	  if (!respawn_ok)
-	    {
-	      long diff = death.tv_sec - birth.tv_sec;
-	      diff *= 1000000000L;
-	      diff += death.tv_nsec - birth.tv_nsec;
-	      respawn_ok = diff >= 1000000000L;
-	    }
-	  birth = death;
-	}
-      else
-	respawn_ok = 1;
-      
-      if (WIFEXITED(r))
-	fprintf(stderr, "%s: daemond exited with value %i", *argv, WEXITSTATUS(r));
-      else
-	fprintf(stderr, "%s: daemond died by signal %i", *argv, WTERMSIG(r));
-      if (WIFEXITED(r) && (WEXITSTATUS(r) == 0))
-	return fprintf(stderr, "\n"), 0;
-      else if (respawn_ok)
-	fprintf(stderr, ", respawning\n");
-      else
-	{
-	  fprintf(stderr, ", dying too fast, respawning in 5 minutes\n");
-	  death.tv_sec += 5 * 60;
-	resleep:
-	  errno = clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &death, NULL);
-	  if (errno == EINTR)
-	    goto resleep;
-	  else if (errno)
-	    perror(*argv);
-	  fprintf(stderr, "%s: respawning now\n", *argv);
-	}
-      
-      child = fork();
-      if (child == -1)
-	return 1;
-      if (child == 0)
-	return child_procedure();
+      r = respawn_perform_resurrection(&birth, &have_time, status);
+      if (r)
+	return r;
     }
 }
 
@@ -239,7 +277,6 @@ static int respawn(pid_t child)
 int main(int argc, char** argv_)
 {
   int r;
-  pid_t pid = -1;
   
   argv = argv_;
   
@@ -248,19 +285,19 @@ int main(int argc, char** argv_)
   
   if (argc == 2)
     {
-      pid = (pid_t)atoll(argv[1]);
+      child = (pid_t)atoll(argv[1]);
       goto have_child;
     }
   
-  pid = fork();
-  if (pid == -1)
+  child = fork();
+  if (child == -1)
     return perror(*argv), 1;
   
-  if (pid == 0)
+  if (child == 0)
     r = child_procedure();
   else
-    r = parent_procedure(pid);
-  if (r || !pid)
+    r = parent_procedure();
+  if (r || !child)
     /* Interruption means that the child died. */
     return (errno != EINTR) ? (perror(*argv), r) : r;
   
@@ -269,7 +306,7 @@ int main(int argc, char** argv_)
     return perror(*argv), 1;
   
 have_child:
-  r = respawn(pid);
+  r = respawn();
   return r ? (perror(*argv), r) : r;
 }
 
