@@ -15,6 +15,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include "config.h"
+
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -24,14 +26,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <time.h>
-
-
-/**
- * The directory where we have our executables
- */
-#ifndef LIBEXECDIR
-# define LIBEXECDIR  "." /* Nice for testing. */
-#endif
 
 
 
@@ -249,8 +243,8 @@ int main(int argc, char** argv_)
   
   argv = argv_;
   
-  if (initialise_daemon() < 0)
-    return perror(*argv), 1;
+  if ((r = initialise_daemon()))
+    return perror(*argv), r;
   
   if (argc == 2)
     {

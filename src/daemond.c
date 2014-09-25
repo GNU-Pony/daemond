@@ -15,6 +15,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include "config.h"
+
 #include <unistd.h>
 #include <signal.h>
 #include <stdio.h>
@@ -23,14 +25,6 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/prctl.h>
-
-
-/**
- * The directory where we have our executables
- */
-#ifndef LIBEXECDIR
-# define LIBEXECDIR  "." /* Nice for testing. */
-#endif
 
 
 

@@ -15,6 +15,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include "config.h"
+
 #include <unistd.h>
 #include <stdio.h>
 #include <sys/stat.h>
@@ -22,17 +24,18 @@
 #include <errno.h>
 #include <sys/wait.h>
 #include <signal.h>
-
+#include <sys/msg.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <time.h>
+#include <string.h>
+#include <stdint.h>
 
 
 /**
- * The directory where we have our executables
+ * Command line arguments
  */
-#ifndef LIBEXECDIR
-# define LIBEXECDIR  "." /* Nice for testing. */
-#endif
-
-
+static char** argv;
 
 /**
  * If we are the parent process, the PID
@@ -56,15 +59,138 @@ static void parent_handle_signal(int signo)
 
 
 /**
+ * Use some proper randomness to seed the randomness
+ */
+static void seed_random(void)
+{
+  void* ap = malloc(1);
+  void* bp = malloc(1);
+  unsigned int a = (unsigned int)(long)ap;
+  unsigned int b = (unsigned int)(long)bp;
+  unsigned int c = (unsigned int)time(NULL);
+  free(ap);
+  free(bp);
+  b = (b << (4 * sizeof(unsigned int)))
+    | (b >> (4 * sizeof(unsigned int)));
+  srand(a ^ b ^ c);
+}
+
+
+/**
+ * Generate a System V IPC key
+ * 
+ * @return  The generated key
+ */
+static key_t generate_key(void)
+{
+  key_t key = IPC_PRIVATE;
+  long long max = 1LL << (8 * sizeof(key_t) - 2);
+  max |= max - 1;
+  while (key == IPC_PRIVATE)
+    key = (key_t)((double)rand() / ((double)RAND_MAX + 1) * (max - 1)) + 1;
+  return key;
+}
+
+
+/**
+ * Create a directory recursively
+ * 
+ * @param   pathname  Follows the same rules as `mkdir`
+ * @param   mode      Follows the same rules as `mkdir`
+ * @return            Follows the same rules as `mkdir`
+ */
+static int mkdirs(const char* pathname, mode_t mode)
+{
+  char* path = strdup(pathname);
+  size_t s, n = strlen(pathname);
+  char* p;
+  
+  if (path == NULL)
+    return -1;
+  
+  while ((p = strrchr(path, '/')))
+    *p = '\0';
+  
+  for (; s = strlen(path), s < n; path[s] = '/')
+    if (mkdir(path, mode) < 0)
+      if (errno != EEXIST)
+	return -1;
+  
+  return mkdir(pathname, mode);
+}
+
+
+/**
+ * Create a System V message queue
+ * 
+ * @return  Zero on success, the value with which `main` should return on failure
+ */
+static int create_mqueue(void)
+{
+  char buf[3 * sizeof(key_t) + 1];
+  int fd = -1, saved_errno, mqueue_id;
+  key_t mqueue_key;
+  size_t n;
+  
+  /* Create a System V message queue with a random key. */
+  seed_random();
+ retry_mqueue:
+  mqueue_key = generate_key();
+  mqueue_id = msgget(mqueue_key, 0750 | IPC_CREAT | IPC_EXCL);
+  if (mqueue_id < 0)
+    {
+      if (errno == EEXIST)
+	goto retry_mqueue;
+      else
+	return 1;
+    }
+  
+  /* Store the key in a file. */
+  fd = open(RUNDIR "/" PKGNAME "/mqueue.key", O_CREAT | O_EXCL | O_WRONLY, 0640);
+  if (fd < 0)
+    goto fail;
+  sprintf(buf, "%ji", (intmax_t)mqueue_key);
+  n = strlen(buf) * sizeof(char);
+  if (write(fd, buf, n) < (ssize_t)n)
+    goto fail;
+  if (close(fd) < 0)
+    perror(*argv);
+  fd = -1;
+  
+  return 0;
+  
+ fail:
+  saved_errno = errno;
+  if (msgctl(mqueue_id, IPC_RMID, NULL) < 0)
+    perror(*argv);
+  if (fd >= 0)
+    if (close(fd) < 0)
+      perror(*argv);
+  return errno = saved_errno, 1;
+}
+
+
+/**
  * Do some initialisation for the daemon
  * 
  * @return  The value with which `main` should return
  */
 static int initialise_daemon(void)
 {
+  int r;
+  
   umask(022);
+  
   if (signal(SIGCHLD, parent_handle_signal) == SIG_ERR)
     return 1;
+  
+  if (mkdirs(RUNDIR "/" PKGNAME, 0750) < 0)
+    if (errno != EEXIST)
+      return 1;
+  
+  if ((r = create_mqueue()))
+    return r;
+  
   return 0;
 }
 
@@ -109,18 +235,19 @@ static int parent_procedure(void)
 /**
  * Starts the daemon (managing) daemon and its immortality protocol
  * 
- * @param   argc  The number of elements in `argv`
- * @param   argv  Command line arguments
- * @return        Zero on success, between 1 and 255 on error
+ * @param   argc   The number of elements in `argv_`
+ * @param   argv_  Command line arguments
+ * @return         Zero on success, between 1 and 255 on error
  */
-int main(int argc, char** argv)
+int main(int argc, char** argv_)
 {
   int r;
   
   (void) argc;
+  argv = argv_;
   
-  if (initialise_daemon() < 0)
-    return perror(*argv), 1;
+  if ((r = initialise_daemon()))
+    return perror(*argv), r;
   
   pid = fork();
   if (pid == -1)
