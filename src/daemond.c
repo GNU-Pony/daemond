@@ -178,6 +178,9 @@ static int initialise_daemon(void)
   if (prctl(PR_SET_PDEATHSIG, SIGRTMIN) < 0)
     return 1;
   
+  if (prctl(PR_SET_CHILD_SUBREAPER, 1) < 0)
+    return 1;
+  
   if ((r = get_mqueue_key()))
     return r;
   if (mqueue_id = msgget(mqueue_key, 0750), mqueue_id < 0)
@@ -250,6 +253,7 @@ static int resurrect_parent(void)
     perror(*argv);
   else if (pid == 0)
     {
+      prctl(PR_SET_CHILD_SUBREAPER, 0);
       r = child_procedure();
       return perror(*argv), r;
     }
