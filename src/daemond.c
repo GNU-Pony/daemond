@@ -193,6 +193,8 @@ static int initialise_daemon(void)
  */
 static int child_procedure(void)
 {
+  if (close(life) < 0)
+    perror(*argv);
   execlp(LIBEXECDIR "/daemond-resurrectd", "daemond-resurrectd", NULL);
   return 1;
 }
@@ -234,22 +236,35 @@ static int parent_procedure(pid_t child)
 static int resurrect_parent(void)
 {
   pid_t pid;
+  int r;
+  
   fprintf(stderr, "%s: daemond-resurrectd died, respawning\n", *argv);
+  
+  if (flock(life, LOCK_UN) < 0)
+    perror(*argv);
+  
   if ((signal(SIGCHLD, noop_sig_handler) == SIG_ERR) ||
       (pid = fork(), pid == -1))
     perror(*argv);
   else if (pid == 0)
     {
-      int r = child_procedure();
+      r = child_procedure();
       return perror(*argv), r;
     }
   else
     if (parent_procedure(pid))
-      perror(*argv);
+      {
+	if (errno != EINTR)
+	  perror(*argv);
+      }
     else
       return 0; /* XXX: I wish we could send our children to the new `daemond-resurrectd`
 		        and that `daemond-resurrectd` could forward them to the new
 			`daemond` it creates. */
+  
+  if (flock(life, LOCK_EX) < 0)
+    perror(*argv);
+  
   return -1;
 }
 
