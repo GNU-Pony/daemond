@@ -155,7 +155,8 @@ static int initialise_daemon(void)
   
   /* There is an unlikely race condition: during exec:s the program loses its
      lock, another instance of daemond could be started during this period. */
-  if (life = open(RUNDIR "/" PKGNAME "/lifeline", O_CREAT | O_APPEND | O_RDWR | O_CLOEXEC, 0750), life < 0)
+  life = open(RUNDIR "/" PKGNAME "/lifeline", O_CREAT | O_APPEND | O_RDWR | O_CLOEXEC, 0750);
+  if (life < 0)
     return 1;
   if (flock(life, LOCK_EX | LOCK_NB) < 0)
     {
