@@ -401,20 +401,7 @@ static int start_daemon(const char* daemon_name)
   if (pid == -1)
     goto fail;
   if (pid)
-    {
-      pause(), pause(); /* Wait for child and grandchild. */
-      /* Exit like the grandchild. */
-      child = read_pid(pid_pathname);
-      pid = waitpid(child, &r, WNOHANG);
-      if (pid == -1)
-	goto fail;
-      else if (pid == 0)
-	r = 0;
-      else
-	r = WIFEXITED(r) ? WEXITSTATUS(r) : WTERMSIG(r);
-      free(pid_pathname);
-      return exit(r), r;
-    }
+    goto wait_for_completion;
   
   /* Create session leader. */
   setsid();
@@ -483,6 +470,20 @@ static int start_daemon(const char* daemon_name)
     close(fd);
   free(pid_pathname);
   return exit(1), 1;
+  
+ wait_for_completion:
+  pause(), pause(); /* Wait for child and grandchild. */
+  /* Exit like the grandchild. */
+  child = read_pid(pid_pathname);
+  pid = waitpid(child, &r, WNOHANG);
+  if (pid == -1)
+    goto fail;
+  else if (pid == 0)
+    r = 0;
+  else
+    r = WIFEXITED(r) ? WEXITSTATUS(r) : WTERMSIG(r);
+  free(pid_pathname);
+  return exit(r), r;
 }
 
 

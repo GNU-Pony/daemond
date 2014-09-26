@@ -327,7 +327,7 @@ int main(int argc, char** argv_)
   if (kill(getppid(), SIGCHLD) < 0)
     return perror(*argv), 1;
   
-have_child:
+ have_child:
   r = respawn();
   return r ? (perror(*argv), r) : r;
 }
