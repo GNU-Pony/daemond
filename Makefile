@@ -46,7 +46,7 @@ FLAGS = $(OPTIMISE) -std=$(STD) $(LFLAGS) $(WARN) $(CFLAGS) $(LDFLAGS) $(CPPFLAG
 # Build rules.
 
 .PHONY: all
-all: bin/daemond bin/daemond-resurrectd bin/daemond-reapd bin/start-daemond
+all: bin/daemond bin/daemond-resurrectd bin/start-daemond
 
 
 bin/%: src/%.c src/*.h
