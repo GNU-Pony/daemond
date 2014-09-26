@@ -64,6 +64,14 @@
 # define PKGNAME  "daemond"
 #endif
 
+/**
+ * Environment variable used to tag processes with
+ * the name of their service
+ */
+#ifndef ENV_DAEMON_NAME_TAG
+# define ENV_DAEMON_NAME_TAG  "DAEMON_NAME"
+#endif
+
 
 #endif
 

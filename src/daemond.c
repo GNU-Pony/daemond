@@ -387,7 +387,7 @@ static int start_daemon(const char* daemon_name)
   sigprocmask(SIG_UNBLOCK, &set, NULL);
   
   /* Mark daemon with its name. */
-  if (setenv("DAEMON_NAME", daemon_name, 1) < 0)
+  if (setenv(ENV_DAEMON_NAME_TAG, daemon_name, 1) < 0)
     goto fail;
   
   /* Set to child subreaper and set SIGCHLD listening. */
