@@ -184,9 +184,6 @@ static int initialise_daemon(void)
   
   umask(022);
   
-  if (signal(SIGCHLD, parent_handle_signal) == SIG_ERR)
-    return 1;
-  
   if (mkdirs(RUNDIR "/" PKGNAME, 0750) < 0)
     if (errno != EEXIST)
       return 1;
@@ -199,6 +196,9 @@ static int initialise_daemon(void)
       if (errno != ENOENT)
 	return 1;
     }
+  
+  if (signal(SIGCHLD, parent_handle_signal) == SIG_ERR)
+    return 1;
   
   return 0;
 }
@@ -256,7 +256,7 @@ int main(int argc, char** argv_)
   argv = argv_;
   
   if ((r = initialise_daemon()))
-    return perror(*argv), r;
+    return errno ? (perror(*argv), r) : r;
   
   pid = fork();
   if (pid == -1)

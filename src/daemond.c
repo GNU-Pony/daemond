@@ -28,6 +28,7 @@
 #include <fcntl.h>
 #include <sys/wait.h>
 #include <sys/msg.h>
+#include <sys/file.h>
 #include <sys/prctl.h>
 
 
@@ -144,7 +145,21 @@ static int get_mqueue_key(void)
  */
 static int initialise_daemon(void)
 {
-  int r;
+  int r, life;
+  
+  /* There is an unlikely race condition: during fork–exec the program loses
+     its lock, another instance of daemond could be started during this period. */
+  if (life = open(RUNDIR "/" PKGNAME "/lifeline", O_CREAT | O_APPEND | O_RDWR, 0750), life < 0)
+    return 1;
+  if (flock(life, LOCK_EX | LOCK_NB) < 0)
+    {
+      if (errno == EWOULDBLOCK)
+	{
+	  fprintf(stderr, "%s: daemond is already running\n", *argv);
+	  return errno = 0, 1;
+	}
+      return 1;
+    }
   
   if ((signal(SIGRTMIN, sig_handler) == SIG_ERR) ||
       (signal(SIGUSR1,  sig_handler) == SIG_ERR) ||
