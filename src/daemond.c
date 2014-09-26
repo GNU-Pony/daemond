@@ -49,6 +49,12 @@ static key_t mqueue_key;
 static int mqueue_id;
 
 /**
+ * The file which holds a lock to indicate
+ * that the daemon is running
+ */
+static int life;
+
+/**
  * Whether the parent has died
  */
 static volatile sig_atomic_t pdeath = 0;
@@ -145,11 +151,11 @@ static int get_mqueue_key(void)
  */
 static int initialise_daemon(void)
 {
-  int r, life;
+  int r;
   
-  /* There is an unlikely race condition: during fork–exec the program loses
-     its lock, another instance of daemond could be started during this period. */
-  if (life = open(RUNDIR "/" PKGNAME "/lifeline", O_CREAT | O_APPEND | O_RDWR, 0750), life < 0)
+  /* There is an unlikely race condition: during exec:s the program loses its
+     lock, another instance of daemond could be started during this period. */
+  if (life = open(RUNDIR "/" PKGNAME "/lifeline", O_CREAT | O_APPEND | O_RDWR | O_CLOEXEC, 0750), life < 0)
     return 1;
   if (flock(life, LOCK_EX | LOCK_NB) < 0)
     {
