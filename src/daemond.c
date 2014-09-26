@@ -439,9 +439,8 @@ static int start_daemon(const char* daemon_name)
   dup2(STDIN_FILENO, STDOUT_FILENO);
   fd = -1;
   
-  /* Set umask to zero, and cd into root. */
+  /* Set umask to zero. */
   umask(0);
-  chdir("/");
   
   /* Write PID file. */
   fd = open(pid_pathname, O_WRONLY | O_CREAT | O_TRUNC, 644);
@@ -456,6 +455,10 @@ static int start_daemon(const char* daemon_name)
     }
   close(fd), fd = -1;
   free(pid_pathname), pid_pathname = NULL;
+  
+  /* `cd` into root. */
+  if (*SYSCONFDIR == '/')
+    chdir("/");
   
   /* Drop privileges. */
   if (getegid() != getgid())  setegid(getgid());
