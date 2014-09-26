@@ -44,6 +44,20 @@
 #endif
 
 /**
+ * The pathname of the /proc/self/fd directory
+ */
+#ifndef SELF_FD
+# define SELF_FD  "/proc/self/fd"
+#endif
+
+/**
+ * The pathname of the /dev/null device
+ */
+#ifndef DEV_NULL
+# define DEV_NULL  "/dev/null"
+#endif
+
+/**
  * The package name of the software
  */
 #ifndef PKGNAME

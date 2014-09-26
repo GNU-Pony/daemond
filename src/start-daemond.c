@@ -155,7 +155,10 @@ static int create_mqueue(void)
   sprintf(buf, "%ji\n", (intmax_t)mqueue_key);
   n = strlen(buf) * sizeof(char);
   if (write(fd, buf, n) < (ssize_t)n)
-    goto fail;
+    {
+      unlink(RUNDIR "/" PKGNAME "/mqueue.key");
+      goto fail;
+    }
   if (close(fd) < 0)
     perror(*argv);
   fd = -1;

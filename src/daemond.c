@@ -17,6 +17,8 @@
  */
 #include "config.h"
 
+#include <stdint.h>
+#include <dirent.h>
 #include <unistd.h>
 #include <signal.h>
 #include <stdio.h>
@@ -105,15 +107,15 @@ static void sig_handler(int signo)
  */
 static int get_mqueue_key(void)
 {
-  char buf[3 * sizeof(key_t) + 3];
+  char buf[3 * sizeof(key_t) + 2];
   int fd = -1, saved_errno;
   ssize_t got;
   char* end;
   
-  fd = open(RUNDIR "/" PKGNAME "/mqueue.key", O_RDONLY, 0640);
+  fd = open(RUNDIR "/" PKGNAME "/mqueue.key", O_RDONLY);
   if (fd < 0)
     return 1;
-  got = read(fd, buf, sizeof(buf));
+  got = read(fd, buf, sizeof(buf) - sizeof(char));
   if (got < 0)
     goto fail;
   if (close(fd) < 0)
@@ -302,6 +304,175 @@ static int handle_interruption(void)
     }
   
   return -1;
+}
+
+
+/**
+ * Close all file descriptor except stdin, stdout and stderr
+ */
+static void close_nonstd_fds(void)
+{
+  DIR* dir;
+  struct dirent* file;
+  int fd;
+  
+  if (dir = opendir(SELF_FD), dir != NULL)
+    while ((file = readdir(dir)) != NULL)
+      if (strcmp(file->d_name, ".") && strcmp(file->d_name, ".."))
+        {
+          fd = atoi(file->d_name);
+          if ((fd != STDIN_FILENO) && (fd != STDOUT_FILENO) && (fd != STDERR_FILENO))
+            close(fd);
+        }
+  closedir(dir);
+}
+
+
+/**
+ * Read the value in a PID file
+ * 
+ * @param   pathname  The PID file's pathname
+ * @return            The PID stored in the file, -1 on error (-1 in waitpid means any PID)
+ */
+static pid_t read_pid(const char* pathname)
+{
+  char buf[3 * sizeof(pid_t) + 1];
+  int fd;
+  ssize_t got;
+  
+  fd = open(pathname, O_RDONLY);
+  if (fd < 0)
+    return -1;
+  got = read(fd, buf, sizeof(buf) - sizeof(char));
+  if (close(fd) < 0)
+    perror(*argv);
+  fd = -1;
+  buf[got] = 0;
+  return (pid_t)atoi(buf);
+}
+
+
+/**
+ * Daemonise the process and start a daemon
+ * 
+ * @param   daemon_name  The name of the daemon
+ * @return               The function call not return, it will
+ *                       however exit the image with a return
+ *                       as an unlikely fallback
+ */
+static int start_daemon(const char* daemon_name)
+{
+  char buf[3 * sizeof(pid_t) + 2];
+  int i, r, fd = -1, saved_errno;
+  sigset_t set;
+  char* pid_pathname = NULL;
+  size_t n;
+  pid_t pid, child;
+  
+  /* Get pathname of PID file. */
+  pid_pathname = malloc((strlen(RUNDIR "/.pid") + strlen(daemon_name) + 1) * sizeof(char));
+  if (pid_pathname == NULL)
+    goto fail;
+  sprintf(pid_pathname, RUNDIR "/%s.pid", daemon_name);
+  
+  /* Close all file descriptors but stdin, stdout and stderr. */
+  close_nonstd_fds();
+  
+  /* Reset all signals to SIG_DFL. */
+  for (i = 1; i < _NSIG; i++)
+    signal(i, SIG_DFL);
+  
+  /* Reset signal mask. */
+  sigfillset(&set);
+  sigprocmask(SIG_UNBLOCK, &set, NULL);
+  
+  /* Mark daemon with its name. */
+  if (setenv("DAEMON_NAME", daemon_name, 1) < 0)
+    goto fail;
+  
+  /* Set to child subreaper and set SIGCHLD listening. */
+  if (prctl(PR_SET_CHILD_SUBREAPER, 1) < 0)
+    goto fail;
+  if (signal(SIGCHLD, noop_sig_handler) == SIG_ERR)
+    goto fail;
+  
+  /* Fork */
+  pid = fork();
+  if (pid == -1)
+    goto fail;
+  if (pid)
+    {
+      pause(), pause(); /* Wait for child and grandchild. */
+      /* Exit like the grandchild. */
+      child = read_pid(pid_pathname);
+      pid = waitpid(child, &r, WNOHANG);
+      if (pid == -1)
+	goto fail;
+      else if (pid == 0)
+	r = 0;
+      else
+	r = WIFEXITED(r) ? WEXITSTATUS(r) : WTERMSIG(r);
+      free(pid_pathname);
+      return exit(r), r;
+    }
+  
+  /* Reset thinks done for the parent process. (Just making sure.) */
+  prctl(PR_SET_CHILD_SUBREAPER, 0);
+  signal(SIGCHLD, SIG_DFL);
+  
+  /* Create session leader. */
+  setsid();
+  
+  /* Fork again, and exit first child. */
+  pid = fork();
+  if (pid > 0)
+    exit(0);
+  if (pid == -1)
+    kill(getppid(), SIGCHLD);
+  
+  /* Replace stdin and stdout, but not stderr, with /dev/null. */
+  close(STDIN_FILENO);
+  close(STDOUT_FILENO);
+  fd = open(DEV_NULL, O_RDWR);
+  if ((fd >= 0) && (fd != STDIN_FILENO))
+    {
+      dup2(fd, STDIN_FILENO);
+      close(fd);
+    }
+  dup2(STDIN_FILENO, STDOUT_FILENO);
+  fd = -1;
+  
+  /* Set umask to zero, and cd into root. */
+  umask(0);
+  chdir("/");
+  
+  /* Write PID file. */
+  fd = open(pid_pathname, O_WRONLY | O_CREAT | O_TRUNC, 644);
+  if (fd < 0)
+    goto fail;
+  sprintf(buf, "%ji\n", (intmax_t)getpid());
+  n = strlen(buf) * sizeof(char);
+  if (write(fd, buf, n) < (ssize_t)n)
+    {
+      saved_errno = errno, unlink(pid_pathname), errno = saved_errno;
+      goto fail;
+    }
+  close(fd), fd = -1;
+  free(pid_pathname), pid_pathname = NULL;
+  
+  /* Drop privileges. */
+  if (getegid() != getgid())  setegid(getgid());
+  if (geteuid() != getuid())  seteuid(getuid());
+  
+  /* Execute into daemon. */
+  execlp(SYSCONFDIR "/" PKGNAME ".d/daemon-base", daemon_name, "start", NULL);
+  
+ fail:
+  perror(*argv);
+  if (fd >= 0)
+    close(fd);
+  free(pid_pathname);
+  return exit(1), 1;
 }
 
 
