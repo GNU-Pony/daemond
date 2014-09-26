@@ -362,6 +362,8 @@ static pid_t read_pid(const char* pathname)
  */
 static int start_daemon(const char* daemon_name)
 {
+#define t(cond)  if (cond) goto fail
+  
   char buf[3 * sizeof(pid_t) + 2];
   int i, r, fd = -1, saved_errno;
   sigset_t set;
@@ -371,8 +373,7 @@ static int start_daemon(const char* daemon_name)
   
   /* Get pathname of PID file. */
   pid_pathname = malloc((strlen(RUNDIR "/.pid") + strlen(daemon_name) + 1) * sizeof(char));
-  if (pid_pathname == NULL)
-    goto fail;
+  t (pid_pathname == NULL);
   sprintf(pid_pathname, RUNDIR "/%s.pid", daemon_name);
   
   /* Close all file descriptors but stdin, stdout and stderr. */
@@ -387,19 +388,15 @@ static int start_daemon(const char* daemon_name)
   sigprocmask(SIG_UNBLOCK, &set, NULL);
   
   /* Mark daemon with its name. */
-  if (setenv(ENV_DAEMON_NAME_TAG, daemon_name, 1) < 0)
-    goto fail;
+  t (setenv(ENV_DAEMON_NAME_TAG, daemon_name, 1) < 0);
   
   /* Set to child subreaper and set SIGCHLD listening. */
-  if (prctl(PR_SET_CHILD_SUBREAPER, 1) < 0)
-    goto fail;
-  if (signal(SIGCHLD, noop_sig_handler) == SIG_ERR)
-    goto fail;
+  t (prctl(PR_SET_CHILD_SUBREAPER, 1) < 0);
+  t (signal(SIGCHLD, noop_sig_handler) == SIG_ERR);
   
   /* Fork */
   pid = fork();
-  if (pid == -1)
-    goto fail;
+  t (pid == -1);
   if (pid)
     goto wait_for_completion;
   
@@ -416,12 +413,9 @@ static int start_daemon(const char* daemon_name)
       pause();
       exit(1); /* Failure, if the grandchild dies first */
     }
-  if (signal(SIGCHLD, noop_sig_handler) == SIG_ERR)
-    goto fail;
-  if (prctl(PR_SET_PDEATHSIG, SIGCHLD) < 0)
-    goto fail;
-  if (kill(getppid(), SIGCHLD) < 0)
-    goto fail;
+  t (signal(SIGCHLD, noop_sig_handler) == SIG_ERR);
+  t (prctl(PR_SET_PDEATHSIG, SIGCHLD) < 0);
+  t (kill(getppid(), SIGCHLD) < 0);
   pause();
       
   /* Reset some thinks. */
@@ -444,8 +438,7 @@ static int start_daemon(const char* daemon_name)
   
   /* Write PID file. */
   fd = open(pid_pathname, O_WRONLY | O_CREAT | O_TRUNC, 644);
-  if (fd < 0)
-    goto fail;
+  t (fd < 0);
   sprintf(buf, "%ji\n", (intmax_t)getpid());
   n = strlen(buf) * sizeof(char);
   if (write(fd, buf, n) < (ssize_t)n)
@@ -487,6 +480,8 @@ static int start_daemon(const char* daemon_name)
     r = WIFEXITED(r) ? WEXITSTATUS(r) : WTERMSIG(r);
   free(pid_pathname);
   return exit(r), r;
+  
+#undef t
 }
 
 
