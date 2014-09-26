@@ -457,10 +457,6 @@ static int start_daemon(const char* daemon_name)
   if (*SYSCONFDIR == '/')
     chdir("/");
   
-  /* Drop privileges. */
-  if (getegid() != getgid())  setegid(getgid());
-  if (geteuid() != getuid())  seteuid(getuid());
-  
   /* Execute into daemon. */
   execlp(SYSCONFDIR "/" PKGNAME ".d/daemon-base", daemon_name, "start", NULL);
   

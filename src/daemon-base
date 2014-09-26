@@ -1,0 +1,110 @@
+#!/bin/bash
+
+# daemond — A daemon managing daemon
+# Copyright © 2014  Mattias Andrée (maandree@member.fsf.org)
+# 
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+
+# The directory where we have our executables
+LIBEXECDIR='.'
+
+# The directory where daemon scripts are placed
+DAEMONDIR='../daemons'
+
+
+# Generic or unspecified error
+EGENERIC=1
+# Invalid or excess arguments
+EINVAL=2
+# Unimplemented feature
+ENOSUP=3
+# User had insufficient privilege
+EPERM=4
+# Program is not installed
+ENOINSTL=5
+# Program is not configured
+ENOCONF=6
+# Program is not running
+ENORUN=7
+# Lowest value that is reserved for future LSB use
+ELSB=8
+# Highest value that is reserved for future LSB use
+ELSB=99
+# Lowest value that is reserved for distribution use
+EDDIST=100
+# Highest value that is reserved for distribution use
+EDDIST=149
+# Lowest value that is reserved for application use
+EDMIN=150
+# Highest value that is reserved for application use
+EDMAX=199
+# The rest of the values are reserved
+
+
+# Start the service
+start()
+{
+    exit $ENOSUP
+}
+
+# Stop the service
+stop()
+{
+    exit $ENOSUP
+}
+
+# Stop and restart the service if the service is
+# already running, otherwise start the service
+restart()
+{
+    exit $ENOSUP
+}
+
+
+# Restart the service if the service is already running
+try-restart()
+{
+    exit $ENOSUP
+}
+
+# Cause the configuration of the service to be reloaded
+# without actually stopping and restarting the service
+reload()
+{
+    exit $ENOSUP
+}
+
+# Cause the configuration to be reloaded if the service
+# supports this, otherwise restart the service if it is running
+force-reload()
+{
+    exit $ENOSUP
+}
+
+# Print the current status of the service
+status()
+{
+    exit $ENOSUP
+}
+
+# Cause the service to update itself
+update()
+{
+    exit $ENOSUP
+}
+
+
+"$@"
+
