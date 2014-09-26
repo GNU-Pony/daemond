@@ -52,6 +52,7 @@ all: bin/daemond bin/daemond-resurrectd bin/daemond-reapd bin/start-daemond
 bin/%: src/%.c src/*.h
 	@mkdir -p bin
 	$(CC) $(FLAGS) -o $@ $<
+	-@rm $*.su
 
 
 # Clean rules.
