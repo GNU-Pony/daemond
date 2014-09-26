@@ -30,10 +30,17 @@
 #endif
 
 /**
- * The base-directory for where we store runtime data
+ * The system directory for runtime data
  */
 #ifndef RUNDIR
 # define RUNDIR  ".run"
+#endif
+
+/**
+ * The system directory for runtime local configurations
+ */
+#ifndef SYSCONFDIR
+# define SYSCONFDIR  ".etc"
 #endif
 
 /**

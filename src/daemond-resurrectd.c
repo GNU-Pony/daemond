@@ -38,6 +38,18 @@
 
 
 /**
+ * Run a hook script asynchronously
+ * 
+ * @param  hook  The hook script
+ */
+#define etcrun(hook)							\
+  if (fork() == 0)							\
+    execlp(SYSCONFDIR "/" PKGNAME ".d/" hook,				\
+	   SYSCONFDIR "/" PKGNAME ".d/" hook, NULL), exit(0)
+
+
+
+/**
  * Command line arguments
  */
 static char** argv;
@@ -215,6 +227,7 @@ static int respawn_perform_resurrection(struct timespec* restrict birth, int* re
     {
       /* (Try to) sleep for 5 minutes, if the daemon too fast, before resurrecting it. */
       fprintf(stderr, ", dying too fast, respawning in 5 minutes\n");
+      etcrun("resurrect-paused");
       death.tv_sec += 5 * 60;
     resleep:
       errno = clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &death, NULL);
@@ -223,6 +236,7 @@ static int respawn_perform_resurrection(struct timespec* restrict birth, int* re
       else if (errno)
 	perror(*argv);
       fprintf(stderr, "%s: respawning now\n", *argv);
+      etcrun("resurrect-resumed");
     }
   
   /* Anastasis. */
