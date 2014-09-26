@@ -117,9 +117,9 @@ static int mkdirs(const char* pathname, mode_t mode)
   for (; s = strlen(path), s < n; path[s] = '/')
     if (mkdir(path, mode) < 0)
       if (errno != EEXIST)
-	return -1;
+	return free(path), -1;
   
-  return mkdir(pathname, mode);
+  return free(path), mkdir(pathname, mode);
 }
 
 
