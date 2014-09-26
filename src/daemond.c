@@ -416,19 +416,29 @@ static int start_daemon(const char* daemon_name)
       return exit(r), r;
     }
   
-  /* Reset thinks done for the parent process. (Just making sure.) */
-  prctl(PR_SET_CHILD_SUBREAPER, 0);
-  signal(SIGCHLD, SIG_DFL);
-  
   /* Create session leader. */
   setsid();
   
-  /* Fork again, and exit first child. */
+  /* Reset some thinks. */
+  prctl(PR_SET_CHILD_SUBREAPER, 0);
+  
+  /* Fork again, and exit first child synchronously. */
   pid = fork();
   if (pid > 0)
-    exit(0);
-  if (pid == -1)
-    kill(getppid(), SIGCHLD);
+    {
+      pause();
+      exit(1); /* Failure, if the grandchild dies first */
+    }
+  if (signal(SIGCHLD, noop_sig_handler) == SIG_ERR)
+    goto fail;
+  if (prctl(PR_SET_PDEATHSIG, SIGCHLD) < 0)
+    goto fail;
+  if (kill(getppid(), SIGCHLD) < 0)
+    goto fail;
+  pause();
+      
+  /* Reset some thinks. */
+  signal(SIGCHLD, SIG_DFL);
   
   /* Replace stdin and stdout, but not stderr, with /dev/null. */
   close(STDIN_FILENO);
