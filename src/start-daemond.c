@@ -130,7 +130,7 @@ static int mkdirs(const char* pathname, mode_t mode)
  */
 static int create_mqueue(void)
 {
-  char buf[3 * sizeof(key_t) + 1];
+  char buf[3 * sizeof(key_t) + 2];
   int fd = -1, saved_errno, mqueue_id;
   key_t mqueue_key;
   size_t n;
@@ -152,7 +152,7 @@ static int create_mqueue(void)
   fd = open(RUNDIR "/" PKGNAME "/mqueue.key", O_CREAT | O_EXCL | O_WRONLY, 0640);
   if (fd < 0)
     goto fail;
-  sprintf(buf, "%ji", (intmax_t)mqueue_key);
+  sprintf(buf, "%ji\n", (intmax_t)mqueue_key);
   n = strlen(buf) * sizeof(char);
   if (write(fd, buf, n) < (ssize_t)n)
     goto fail;

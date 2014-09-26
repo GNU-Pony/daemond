@@ -20,10 +20,14 @@
 #include <unistd.h>
 #include <signal.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <errno.h>
 #include <string.h>
 #include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include <sys/wait.h>
+#include <sys/msg.h>
 #include <sys/prctl.h>
 
 
@@ -32,6 +36,16 @@
  * Command line arguments
  */
 static char** argv;
+
+/**
+ * The key of the server message queue
+ */
+static key_t mqueue_key;
+
+/**
+ * The ID of the server message queue
+ */
+static int mqueue_id;
 
 /**
  * Whether the parent has died
@@ -78,12 +92,60 @@ static void sig_handler(int signo)
 
 
 /**
+ * Acquire and set the value for `mqueue_key`
+ * 
+ * @return  The value with which `main` should return
+ */
+static int get_mqueue_key(void)
+{
+  char buf[3 * sizeof(key_t) + 3];
+  int fd = -1, saved_errno;
+  ssize_t got;
+  char* end;
+  
+  fd = open(RUNDIR "/" PKGNAME "/mqueue.key", O_RDONLY, 0640);
+  if (fd < 0)
+    return 1;
+  got = read(fd, buf, sizeof(buf));
+  if (got < 0)
+    goto fail;
+  if (close(fd) < 0)
+    perror(*argv);
+  fd = -1;
+  buf[got] = 0;
+  if (memchr(buf, '\n', (size_t)got) == NULL)
+    {
+      fprintf(stderr, "%s: %s contains invalid data\n",
+	      *argv, RUNDIR "/" PKGNAME "/mqueue.key");
+      return errno = 0, 1;
+    }
+  mqueue_key = (key_t)strtoll(buf, &end, 10);
+  if ((end[0] != '\n') || end[1])
+    {
+      fprintf(stderr, "%s: %s contains invalid data\n",
+	      *argv, RUNDIR "/" PKGNAME "/mqueue.key");
+      return errno = 0, 1;
+    }
+  
+  return 0;
+  
+ fail:
+  saved_errno = errno;
+  if (fd >= 0)
+    close(fd);
+  return errno = saved_errno, 1;
+}
+
+
+/**
  * Initialise the daemon
  * 
  * @return  The value with which `main` should return
  */
 static int initialise_daemon(void)
 {
+  int r;
+  
   if ((signal(SIGRTMIN, sig_handler) == SIG_ERR) ||
       (signal(SIGUSR1,  sig_handler) == SIG_ERR) ||
       (signal(SIGUSR2,  sig_handler) == SIG_ERR))
@@ -91,6 +153,11 @@ static int initialise_daemon(void)
   
   if (prctl(PR_SET_PDEATHSIG, SIGRTMIN) < 0)
     return 1;
+  
+  if ((r = get_mqueue_key()))
+    return r;
+  if (mqueue_id = msgget(mqueue_key, 0750), mqueue_id < 0)
+    return r;
   
   return 0;
 }
@@ -218,7 +285,7 @@ int main(int argc, char** argv_)
     reexeced = 1;
   
   if ((r = initialise_daemon()))
-    return perror(*argv), r;
+    return errno ? (perror(*argv), r) : r;
   
   /* Signal `daemond-resurrectd` that we are running. */
   if (!reexeced)
