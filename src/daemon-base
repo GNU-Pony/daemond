@@ -80,7 +80,7 @@ is_alive()
 
 
 
-# Start the service
+# Start the service, it is guaranteed not to already be running
 start()
 {
     echo "I do not know how to start ${DAEMON_NAME}" >&2
@@ -104,7 +104,24 @@ stop()
 	echo "action not supported" >&2
 	return $ENOSUP
     else
-	kill -$SIG $(cat "/run/${DAEMON_NAME}.pid")
+	pid=$(cat "/run/${DAEMON_NAME}.pid")
+	ticks=0
+	kill -$SIG $pid
+	if [ ! $? = 0 ]; then
+	    return $EGENERIC
+	fi
+	while (( ticks < 30 )); do
+	    (( ticks++ ))
+	    kill -0 $pid >/dev/null 2>/dev/null
+	    if [ $? = 0 ]; then
+		return 0
+	    else
+		sleep 0.1
+	    fi
+        done
+	echo "${DAEMON_NAME} did not stop without 3 seconds" >&2
+	echo "${DAEMON_NAME} might be called asynchronously" >&2
+	return $EGENERIC
     fi
 }
 
@@ -115,7 +132,7 @@ restart()
     if is_alive; then
 	stop
 	r=$?
-	if (( $r )); then
+	if [ ! $r = 0 ]; then
 	    return $r
 	fi
     fi
