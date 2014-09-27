@@ -32,19 +32,21 @@
        #include <unistd.h>
        kill(getppid(), SIGCHLD)
 
-4) Write a daemon script, that contains the function start which starts the daemon
+-----
 
-5) Make your daemon terminate cleanly on SIGTERM, or select the signal by in your
+a) Write a daemon script, that contains the function start which starts the daemon.
+
+b) Make your daemon terminate cleanly on SIGTERM, or select the signal by in your
    daemon script change the value of SIGSTOP.
 
-6) Make your daemon reload its configurations on SIGHUP, or select the signal by
+c) Make your daemon reload its configurations on SIGHUP, or select the signal by
    in your daemon script change the value of SIGRELOAD. If you have nothing to
    reload clear the value of SIGRELOAD.
 
-7) Make your daemon re-execute itself on SIGUSR1, or select the signal by in your
+d) Make your daemon re-execute itself on SIGUSR1, or select the signal by in your
    daemon script change the value of SIGUPDATE. If you do not support this action,
    clear the value of SIGUPDATE.
 
-8) If you need to clean up after yourself, implement the function dead in your
+e) If you need to clean up after yourself, implement the function dead in your
    daemon script.
 
