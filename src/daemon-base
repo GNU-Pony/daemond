@@ -62,6 +62,9 @@ SIGUPDATE=USR1
 
 
 
+# TODO make it so that daemond knows new PID:s
+
+
 # Is the service running?
 is_alive()
 {
@@ -90,6 +93,11 @@ start()
 # Stop the service
 stop()
 {
+    # There is no advantages in moving this into daemond;
+    # if daemond is reborn, we have runaway daemons that
+    # we cannot wait for to die, so enabling such mechanism
+    # is not advantageous.
+    
     if ! is_alive; then
 	echo "${DAEMON_NAME} is not running" >&2
 	return $ENORUN
