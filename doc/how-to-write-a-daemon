@@ -24,13 +24,14 @@
      6 = Program is not configured
      7 = Program is not running
 
-2) Drop privileges if you do not need them for step 1 or operation. (recommendation)
-
-3) Send SIGCHLD to the parent process:
+2) Send SIGCHLD to the parent process:
 
        #include <signal.h>
        #include <unistd.h>
        kill(getppid(), SIGCHLD)
+
+3) Drop privileges if you do not need them for step 1 or operation. (recommendation)
+   This should be done when reexecuting.
 
 -----
 
