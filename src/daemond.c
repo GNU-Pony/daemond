@@ -91,12 +91,9 @@ static void noop_sig_handler(int signo)
  */
 static void sig_handler(int signo)
 {
-  if (signo == SIGRTMIN)
-    pdeath = 1;
-  else if (signo == SIGUSR1)
-    reexec = 1;
-  else if (signo == SIGUSR2)
-    immortality = 0;
+  if      (signo == SIGRTMIN)  pdeath = 1;
+  else if (signo == SIGUSR1)   reexec = 1;
+  else if (signo == SIGUSR2)   immortality = 0;
 }
 
 
@@ -112,11 +109,9 @@ static int get_mqueue_key(void)
   ssize_t got;
   char* end;
   
-  fd = open(RUNDIR "/" PKGNAME "/mqueue.key", O_RDONLY);
-  if (fd < 0)
+  if (fd = open(RUNDIR "/" PKGNAME "/mqueue.key", O_RDONLY), fd < 0)
     return 1;
-  got = read(fd, buf, sizeof(buf) - sizeof(char));
-  if (got < 0)
+  if (got = read(fd, buf, sizeof(buf) - sizeof(char)), got < 0)
     goto fail;
   if (close(fd) < 0)
     perror(*argv);
@@ -170,15 +165,12 @@ static int initialise_daemon(void)
       return 1;
     }
   
-  if ((signal(SIGRTMIN, sig_handler) == SIG_ERR) ||
-      (signal(SIGUSR1,  sig_handler) == SIG_ERR) ||
-      (signal(SIGUSR2,  sig_handler) == SIG_ERR))
-    return 1;
-  
-  if (prctl(PR_SET_PDEATHSIG, SIGRTMIN) < 0)
-    return 1;
-  
-  if (prctl(PR_SET_CHILD_SUBREAPER, 1) < 0)
+  if ((signal(SIGRTMIN,     sig_handler) == SIG_ERR) ||
+      (signal(SIGUSR1,      sig_handler) == SIG_ERR) ||
+      (signal(SIGUSR2,      sig_handler) == SIG_ERR) ||
+      (signal(SIGCHLD, noop_sig_handler) == SIG_ERR) ||
+      (prctl(PR_SET_PDEATHSIG, SIGRTMIN) < 0)    ||
+      (prctl(PR_SET_CHILD_SUBREAPER, 1) < 0))
     return 1;
   
   if ((r = get_mqueue_key()))
@@ -359,15 +351,18 @@ static pid_t read_pid(const char* pathname)
 /**
  * Daemonise the process and start a daemon
  * 
- * @param   daemon_name  The name of the daemon
- * @return               The function call not return, it will
- *                       however exit the image with a return
- *                       as an unlikely fallback
+ * @param   arguments  `NULL`-terminated list of command line arguments,
+ *                     the verb first, then the name of the daemon, followed
+ *                     by optional additional script-dependent arguments
+ * @return             The function call not return, it will
+ *                     however exit the image with a return
+ *                     as an unlikely fallback
  */
-static int start_daemon(const char* daemon_name)
+static int start_daemon(char** arguments)
 {
 #define t(cond)  if (cond) goto fail
   
+  char* daemon_name = arguments[1];
   char buf[3 * sizeof(pid_t) + 2];
   int i, r, fd = -1, saved_errno;
   sigset_t set;
@@ -421,7 +416,7 @@ static int start_daemon(const char* daemon_name)
   t (prctl(PR_SET_PDEATHSIG, SIGCHLD) < 0);
   t (kill(getppid(), SIGCHLD) < 0);
   pause();
-      
+  
   /* Reset some thinks. */
   signal(SIGCHLD, SIG_DFL);
   
@@ -458,7 +453,9 @@ static int start_daemon(const char* daemon_name)
     chdir("/");
   
   /* Execute into daemon. */
-  execlp(SYSCONFDIR "/" PKGNAME ".d/daemon-base", daemon_name, "start", NULL);
+  arguments[1] = arguments[0];
+  arguments[0] = daemon_name;
+  execvp(SYSCONFDIR "/" PKGNAME ".d/daemon-base", arguments);
   
  fail:
   perror(*argv);
@@ -486,6 +483,109 @@ static int start_daemon(const char* daemon_name)
 
 
 /**
+ * Attempt to reap a child, if there are no zombies, handle interruption
+ * 
+ * @return  The return value for `main`, -1 if the called should not return
+ */
+static int reap(void)
+{
+  int r, status;
+  pid_t pid;
+  
+  if (pid = waitpid(-1, &status, WNOHANG), pid < 1)
+    {
+      if ((errno != EINTR) && (errno != ECHILD))
+	return perror(*argv), 1;
+      else if ((errno == EINTR) || (pid == 0))
+	if (r = handle_interruption(), r >= 0)
+	  return r;
+    }
+  else
+    printf("reaped %ji\n", (intmax_t)pid); /* TODO */
+  
+  return -1;
+}
+
+
+/**
+ * Handle a received message
+ * 
+ * @param   message  The message
+ * @param   length   The length of `message`
+ * @return           The return value for `main`, -1 if the called should not return
+ */
+static int received_message(char* message, size_t length)
+{
+  char** arguments;
+  size_t count = 0;
+  size_t i, j;
+  
+  if ((length == 0) || (message[length - 1] != '\0'))
+    return fprintf(stderr, "%s: received invalid message\n", *argv), -1;
+  
+  /* Simplify message, so arguments start at NUL:s. */
+  memmove(message + 1, message, length - 1);
+  message[0] = '\0';
+  
+  for (i = 0; i < length; i++)
+    if (message[i] == '\0')
+      count++;
+  
+  arguments = malloc((count + 1) * sizeof(char*));
+  if (arguments == NULL)
+    return perror(*argv), 1;
+  
+  for (i = j = 0; i < length; i++)
+    if (message[i] == '\0')
+      arguments[j++] = message + i;
+  arguments[count] = NULL;
+  
+  /* Unsimplify message, so every argument is NUL-terminated. */
+  memmove(message, message + 1, length - 1);
+  message[length - 1] = '\0';
+  
+  /* TODO */
+  
+  return free(arguments), -1;
+}
+
+
+/**
+ * The mane loop, manage daemons
+ * 
+ * @return  The return value for `main`
+ */
+static int mane_loop(void)
+{
+  struct { long mtype; char* mtext; } mqueue_buf;
+  struct msqid_ds mqueue_info;
+  ssize_t msg_size;
+  int r;
+  
+  if (msgctl(mqueue_id, IPC_STAT, &mqueue_info) < 0)
+    return perror(*argv), 1;
+  
+  mqueue_buf.mtype = 0;
+  mqueue_buf.mtext = malloc(mqueue_info.msg_qbytes * sizeof(char));
+  if (mqueue_buf.mtext == NULL)
+    return perror(*argv), 1;
+  
+  for (;;)
+    {
+      msg_size = msgrcv(mqueue_id, &mqueue_buf, mqueue_info.msg_qbytes, 1, 0);
+      if ((msg_size < 0) && (errno != EINTR))
+	return perror(*argv), free(mqueue_buf.mtext), 1;
+      else if (msg_size < 0)
+	r = reap();
+      else
+	r = received_message(mqueue_buf.mtext, (size_t)msg_size / sizeof(char));
+      if (r >= 0)
+	return free(mqueue_buf.mtext), r;
+    }
+}
+
+
+/**
  * Starts the daemon (managing) daemon
  * 
  * @param   argc   The number of elements in `argv_`
@@ -495,7 +595,6 @@ static int start_daemon(const char* daemon_name)
 int main(int argc, char** argv_)
 {
   int r, reexeced = 0;
-  pid_t pid;
   
   argv = argv_;
   if ((argc == 2) && !strcmp(argv[1], "--reexecing"))
@@ -509,14 +608,6 @@ int main(int argc, char** argv_)
     if (kill(getppid(), SIGCHLD) < 0)
       return perror(*argv), 1;
   
-  for (;;)
-    if ((pid = wait(NULL), pid == -1) && ((errno == ECHILD) && pause()))
-      {
-	if (errno != EINTR)
-	  return perror(*argv), 1;
-	else
-	  if (r = handle_interruption(), r >= 0)
-	    return r;
-      }
+  return mane_loop();
 }
 
