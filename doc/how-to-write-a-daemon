@@ -1,0 +1,34 @@
+0) Do NOT sanitise the environment, it is already sanitised and contains the manditory DAEMON_NAME.
+
+0) Do not close file descriptors, they have already been closed.
+
+0) Do not reset signal handlers or the signal mask, that has already been done.
+
+0) Do not fork–setsid–fork, that has also already been done.
+
+0) Do not modify stdin or stdout, they are already directed to /dev/null.
+
+0) Do not set stderr to /dev/null, the user might what you to print error outputs to it.
+
+0) Do not set the umask to 0, it is already 0.
+
+0) Do not create a PID-file, you already have one.
+
+1) Initialise, if this but nothing else requires privileges.
+   On failure exit with another value than 0:
+     1 = Generic or unspecified error
+     2 = Invalid or excess arguments
+     3 = Unimplemented feature
+     4 = User had insufficient privilege
+     5 = Program is not installed
+     6 = Program is not configured
+     7 = Program is not running
+
+2) Drop privileges if you do not need them for step 1 or operation. (recommendation)
+
+3) Send SIGCHLD to the parent process:
+
+       #include <signal.h>
+       #include <unistd.h>
+       kill(getppid(), SIGCHLD)
+
