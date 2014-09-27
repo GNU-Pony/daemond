@@ -1,0 +1,6 @@
+bash
+glibc
+linux>=3.4
+grep
+coreutils
+

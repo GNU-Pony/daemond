@@ -17,9 +17,6 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
-# The directory where we have our executables
-LIBEXECDIR='.'
-
 # The directory where daemon scripts are placed
 DAEMONDIR='../daemons'
 
@@ -50,61 +47,183 @@ EDDIST=149
 EDMIN=150
 # Highest value that is reserved for application use
 EDMAX=199
-# The rest of the values are reserved
+# The rest of the values are reserved, 0 is success
+
+
+# The signal to send to a service to stop it
+SIGSTOP=TERM
+# The signal to send to a service to force stop it
+SIGKILL=KILL
+# The signal to send to a service to reload its configurations
+SIGRELOAD=HUP
+# The signal to send to a service to make it re-exec. to update itself
+SIGUPDATE=USR1
+# Set either of these to an empty string to disable the action
+
+
+
+# Is the service running?
+is_alive()
+{
+    if [ -f "/run/${DAEMON_NAME}.pid" ]; then
+	pid=$(cat "/run/${DAEMON_NAME}.pid")
+	env_need="DAEMON_NAME=${DAEMON_NAME}"
+	if ! kill -0 $pid >/dev/null 2>&1; then
+	    return 1
+	fi
+	if cat "/proc/${pid}/environ" | grep -P '(^|\x00)'"${env_need}"'\x00' >/dev/null 2>&1; then
+	    return 0
+	fi
+    fi
+    return 1
+}
+
 
 
 # Start the service
 start()
 {
-    exit $ENOSUP
+    echo "I do not know how to start ${DAEMON_NAME}" >&2
+    return $ENOSUP
 }
 
 # Stop the service
 stop()
 {
-    exit $ENOSUP
+    if ! is_alive; then
+	echo "${DAEMON_NAME} is not running" >&2
+	return $ENORUN
+    fi
+    
+    SIG="${SIGSTOP}"
+    if [ "$1" = "--force" ] || [ "$1" = "-f" ]; then
+	SIG="${SIGKILL}"
+    fi
+    
+    if [ -z "${SIG}" ]; then
+	echo "action not supported" >&2
+	return $ENOSUP
+    else
+	kill -$SIG $(cat "/run/${DAEMON_NAME}.pid")
+    fi
 }
 
 # Stop and restart the service if the service is
 # already running, otherwise start the service
 restart()
 {
-    exit $ENOSUP
+    if is_alive; then
+	stop
+	r=$?
+	if (( $r )); then
+	    return $r
+	fi
+    fi
+    start "$@"
 }
-
 
 # Restart the service if the service is already running
 try-restart()
 {
-    exit $ENOSUP
+    if ! is_alive; then
+	echo "${DAEMON_NAME} is not running" >&2
+	return $ENORUN
+    else
+	restart "$@"
+    fi
 }
 
 # Cause the configuration of the service to be reloaded
 # without actually stopping and restarting the service
 reload()
 {
-    exit $ENOSUP
+    if ! is_alive; then
+	echo "${DAEMON_NAME} is not running" >&2
+	return $ENORUN
+    fi
+    
+    if [ -z "${SIGRELOAD}" ]; then
+	echo "action not supported" >&2
+	return $ENOSUP
+    else
+	kill -$SIGRELOAD $(cat "/run/${DAEMON_NAME}.pid")
+    fi
 }
 
 # Cause the configuration to be reloaded if the service
 # supports this, otherwise restart the service if it is running
 force-reload()
 {
-    exit $ENOSUP
-}
-
-# Print the current status of the service
-status()
-{
-    exit $ENOSUP
+    if ! is_alive; then
+	echo "${DAEMON_NAME} is not running" >&2
+	return $ENORUN
+    fi
+    
+    if [ -z "${SIGRELOAD}" ]; then
+	try-restart "$@"
+    else
+	reload "$@"
+    fi
 }
 
 # Cause the service to update itself
 update()
 {
-    exit $ENOSUP
+    if ! is_alive; then
+	echo "${SIGUPDATE} is not running" >&2
+	return $ENORUN
+    fi
+    
+    if [ -z "${SIGUPDATE}" ]; then
+	echo "action not supported" >&2
+	return $ENOSUP
+    else
+	kill -$SIGUPDATE $(cat "/run/${DAEMON_NAME}.pid")
+    fi
+}
+
+# Cause the service to update itself if the service
+# supports this, otherwise restart the service if it is running
+force-update()
+{
+    if ! is_alive; then
+	echo "${DAEMON_NAME} is not running" >&2
+	return $ENORUN
+    fi
+    
+    if [ -z "${SIGUPDATE}" ]; then
+	try-restart "$@"
+    else
+	update "$@"
+    fi
+}
+
+# Print the current status of the service
+status()
+{
+    if is_alive; then
+	echo "${DAEMON_NAME} is running" >&2
+    elif [ -f "/run/${DAEMON_NAME}.pid" ]; then
+	echo "${DAEMON_NAME} is not running, but has a PID-file" >&2
+    else
+	echo "${DAEMON_NAME} is not running" >&2
+    fi
+    return 0
+}
+
+# The service has died
+death()
+{
+    return 0
 }
 
 
-"$@"
+
+if [ -f "${DAEMONDIR}/$0" ]; then
+    . "${DAEMONDIR}/$0"
+    "$@"
+else
+    echo "${DAEMON_NAME} is not installed" >&2
+    exit $ENOINSTL
+fi
 
