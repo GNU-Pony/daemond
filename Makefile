@@ -46,7 +46,7 @@ DAEMOND_RESURRECTD_OBJS = daemond-resurrectd
 
 START_DAEMOND_OBJS = start-daemond
 
-DAEMOND_OBJS = daemond
+DAEMOND_OBJS = daemond daemonise
 
 
 
