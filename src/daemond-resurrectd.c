@@ -195,7 +195,7 @@ static int respawn_perform_resurrection(struct timespec* restrict birth, int* re
   /* Get time of death. */
   if (*have_time)
     {
-      *have_time = clock_gettime(CLOCK_MONOTONIC, &death) == 0;
+      *have_time = clock_gettime(CLOCK_MONOTONIC_RAW, &death) == 0;
       if (!*have_time)
 	perror(*argv);
     }
@@ -230,7 +230,7 @@ static int respawn_perform_resurrection(struct timespec* restrict birth, int* re
       etcrun("resurrect-paused");
       death.tv_sec += 5 * 60;
     resleep:
-      errno = clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &death, NULL);
+      errno = clock_nanosleep(CLOCK_MONOTONIC_RAW, TIMER_ABSTIME, &death, NULL);
       if (errno == EINTR)
 	goto resleep;
       else if (errno)
@@ -261,7 +261,7 @@ static int respawn(void)
   pid_t pid;
   
   /* Get time of birth for the daemon. */
-  have_time = clock_gettime(CLOCK_MONOTONIC, &birth) == 0;
+  have_time = clock_gettime(CLOCK_MONOTONIC_RAW, &birth) == 0;
   if (!have_time)
     perror(*argv);
   
@@ -282,8 +282,7 @@ static int respawn(void)
       if (immortality == 0)
 	return 0;
       
-      r = respawn_perform_resurrection(&birth, &have_time, status);
-      if (r)
+      if ((r = respawn_perform_resurrection(&birth, &have_time, status)))
 	return r;
     }
 }
@@ -311,14 +310,10 @@ int main(int argc, char** argv_)
       goto have_child;
     }
   
-  child = fork();
-  if (child == -1)
+  if (child = fork(), child == -1)
     return perror(*argv), 1;
   
-  if (child == 0)
-    r = child_procedure();
-  else
-    r = parent_procedure();
+  r = (child ? parent_procedure : child_procedure)();
   if (r || !child)
     /* Interruption means that the child died. */
     return (errno != EINTR) ? (perror(*argv), r) : r;

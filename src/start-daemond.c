@@ -204,14 +204,10 @@ static char* read_file(const char* restrict pathname, size_t* restrict n)
 	  old = NULL;
 	}
       got = read(fd, content + ptr, *n - ptr);
-      if ((got < 0) && (errno == EINTR))
-	continue;
-      else if (got < 0)
-	goto fail;
-      else if (got == 0)
-	break;
-      else
-	ptr += (size_t)got;
+      if ((got < 0) && (errno == EINTR))  continue;
+      else if (got < 0)                   goto fail;
+      else if (got == 0)                  break;
+      else                                ptr += (size_t)got;
     }
   
   *n = ptr / sizeof(char);
@@ -459,7 +455,7 @@ static int parent_procedure(void)
 
 
 /**
- * Starts the daemon (managing) daemon and its immortality protocol
+ * Starts the daemon (-managing) daemon and its immortality protocol
  * 
  * @param   argc   The number of elements in `argv_`
  * @param   argv_  Command line arguments
@@ -475,14 +471,10 @@ int main(int argc, char** argv_)
   if ((r = initialise_daemon()))
     return errno ? (perror(*argv), r) : r;
   
-  pid = fork();
-  if (pid == -1)
+  if (pid = fork(), pid == -1)
     return perror(*argv), 1;
   
-  if (pid == 0)
-    r = child_procedure();
-  else
-    r = parent_procedure();
+  r = (pid ? parent_procedure : child_procedure)();
   
   /* Interruption means that the child died. */
   return (r && (errno != EINTR)) ? (perror(*argv), r) : r;

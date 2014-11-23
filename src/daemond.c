@@ -336,8 +336,7 @@ static pid_t read_pid(const char* pathname)
   int fd;
   ssize_t got;
   
-  fd = open(pathname, O_RDONLY);
-  if (fd < 0)
+  if (fd = open(pathname, O_RDONLY), fd < 0)
     return -1;
   got = read(fd, buf, sizeof(buf) - sizeof(char));
   if (close(fd) < 0)
@@ -394,8 +393,7 @@ static int start_daemon(char** arguments)
   t (signal(SIGCHLD, noop_sig_handler) == SIG_ERR);
   
   /* Fork */
-  pid = fork();
-  t (pid == -1);
+  t ((pid = fork(), pid == -1));
   if (pid)
     goto wait_for_completion;
   
@@ -406,8 +404,7 @@ static int start_daemon(char** arguments)
   prctl(PR_SET_CHILD_SUBREAPER, 0);
   
   /* Fork again, and exit first child synchronously. */
-  pid = fork();
-  if (pid > 0)
+  if (pid = fork(), pid > 0)
     {
       pause();
       exit(1); /* Failure, if the grandchild dies first */
@@ -471,10 +468,7 @@ static int start_daemon(char** arguments)
   pid = waitpid(child, &r, WNOHANG);
   if (pid == -1)
     goto fail;
-  else if (pid == 0)
-    r = 0;
-  else
-    r = WIFEXITED(r) ? WEXITSTATUS(r) : WTERMSIG(r);
+  r = pid ? WIFEXITED(r) ? WEXITSTATUS(r) : WTERMSIG(r) : 0;
   free(pid_pathname);
   return exit(r), r;
   
@@ -586,7 +580,7 @@ static int mane_loop(void)
 
 
 /**
- * Starts the daemon (managing) daemon
+ * Starts the daemon (-managing) daemon
  * 
  * @param   argc   The number of elements in `argv_`
  * @param   argv_  Command line arguments
