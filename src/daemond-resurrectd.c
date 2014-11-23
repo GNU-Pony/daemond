@@ -29,11 +29,11 @@
 
 
 
-/* Remark: if daemond and daemond-resurrect is dies at the same
+/* Remark: if daemond and daemond-resurrect dies at the same
  *         time they will not be resurrected, this is acceptble
  *         because the immortality protocol is intended to stop
- *         crashes from causing a problem, and two  simultaneous
- *         deaths us most probably user triggered. */
+ *         crashes from causing a problem, and two simultaneous
+ *         deaths is most probably user triggered. */
 
 
 
