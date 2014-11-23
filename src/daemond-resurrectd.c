@@ -290,7 +290,7 @@ static int respawn(void)
 
 
 /**
- * Starts the daemon (managing) daemon
+ * Starts the daemon (-managing) daemon
  * 
  * @param   argc   The number of elements in `argv_`
  * @param   argv_  Command line arguments
