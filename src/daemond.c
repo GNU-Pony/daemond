@@ -169,7 +169,7 @@ static int initialise_daemon(void)
       (signal(SIGUSR1,      sig_handler) == SIG_ERR) ||
       (signal(SIGUSR2,      sig_handler) == SIG_ERR) ||
       (signal(SIGCHLD, noop_sig_handler) == SIG_ERR) ||
-      (prctl(PR_SET_PDEATHSIG, SIGRTMIN) < 0)    ||
+      (prctl(PR_SET_PDEATHSIG, SIGRTMIN) < 0)        ||
       (prctl(PR_SET_CHILD_SUBREAPER, 1) < 0))
     return 1;
   
