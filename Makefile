@@ -42,22 +42,39 @@ WARN = -Wall -Wextra -pedantic -Wdouble-promotion -Wformat=2 -Winit-self -Wmissi
 FLAGS = $(OPTIMISE) -std=$(STD) $(LFLAGS) $(WARN) $(CFLAGS) $(LDFLAGS) $(CPPFLAGS)
 
 
+DAEMOND_RESURRECTD_OBJS = daemond-resurrectd
+
+START_DAEMOND_OBJS = start-daemond
+
+DAEMOND_OBJS = daemond
+
+
 
 # Build rules.
 
 .PHONY: all
 all: bin/daemond bin/daemond-resurrectd bin/start-daemond
 
-
-bin/%: src/%.c src/*.h
+bin/daemond-resurrectd: $(foreach O,$(DAEMOND_RESURRECTD_OBJS),obj/$(O).o)
 	@mkdir -p bin
-	$(CC) $(FLAGS) -o $@ $<
-	-@rm $*.su
+	$(CC) $(FLAGS) -o $@ $^
+
+bin/start-daemond: $(foreach O,$(START_DAEMOND_OBJS),obj/$(O).o)
+	@mkdir -p bin
+	$(CC) $(FLAGS) -o $@ $^
+
+bin/daemond: $(foreach O,$(DAEMOND_OBJS),obj/$(O).o)
+	@mkdir -p bin
+	$(CC) $(FLAGS) -o $@ $^
+
+obj/%.o: src/%.c src/*.h
+	@mkdir -p obj
+	$(CC) $(FLAGS) -c -o $@ $<
 
 
 # Clean rules.
 
 .PHONY: clean
 clean:
-	-rm -rf obj bin *.su
+	-rm -rf obj bin
 
